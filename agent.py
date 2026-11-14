@@ -24,8 +24,16 @@ def fetch(source: str, work: Path) -> Path:
         return Path(source).resolve()
     out = work / "source.mp4"
     print("Downloading…")
-    run(["yt-dlp", "-f", "bv*[height<=1080]+ba/b", "--merge-output-format", "mp4",
-         "-o", str(out), source])
+    cmd = ["yt-dlp", "-f", "bv*[height<=1080]+ba/b", "--merge-output-format", "mp4",
+           "-o", str(out), source]
+    cf = os.getenv("LC_COOKIES_FILE")
+    if cf and os.path.exists(cf):
+        cmd[1:1] = ["--cookies", cf]
+    try:
+        run(cmd)
+    except subprocess.CalledProcessError:
+        sys.exit("\nDownload failed. Sites like YouTube often block cloud servers. "
+                 "Upload the video file instead (use the file picker on the page).")
     return out
 
 

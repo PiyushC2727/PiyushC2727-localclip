@@ -44,3 +44,7 @@ Needs a host that runs Docker (Render, Railway, Fly.io, a VPS). Push this folder
 `LC_PROVIDER`, `LC_MODEL`, `LC_KEY`. Your link is `https://YOUR-APP.onrender.com/?token=YOUR_LC_TOKEN`.
 Use at least 2 GB RAM (speech model), and set `LC_WHISPER=base` if memory is tight.
 Note: YouTube often blocks downloads from cloud servers; uploading/using your own files is more reliable there.
+
+## If YouTube blocks the link
+Cloud servers are often blocked by YouTube ("Sign in to confirm you're not a bot"). Use the **upload a video file** picker on the page instead. Limit: `LC_MAX_MB` (default 500).
+Advanced: set `LC_COOKIES` to a Netscape-format cookies.txt (use a throwaway account; cookies expire and this may still fail).

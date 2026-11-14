@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Local web UI for localclip. Run: python server.py  →  http://127.0.0.1:8765
 Binds to this computer only. Keys typed in the page are passed to the job in memory and never saved."""
-import hmac, json, os, re, secrets, socket, subprocess, sys, threading, uuid, webbrowser
+import hmac, json, os, re, secrets, socket, subprocess, sys, tempfile, threading, uuid, webbrowser
 from http.cookies import SimpleCookie
 from urllib.parse import parse_qs, urlparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -17,6 +17,13 @@ LAN = "--lan" in sys.argv or os.getenv("LC_LAN") == "1"  # let your phone reach 
 HOST, PORT = ("0.0.0.0" if LAN else "127.0.0.1"), int(os.getenv("LC_PORT") or os.getenv("PORT") or 8765)
 TOKEN = (os.getenv("LC_TOKEN") or secrets.token_urlsafe(9)) if LAN else None  # required in LAN mode
 JOBS = {}  # id -> {"status", "log", "clips"}
+UPLOADS = JOBS_DIR / "uploads"
+UPLOADS.mkdir(exist_ok=True)
+MAX_MB = int(os.getenv("LC_MAX_MB", "500"))
+if os.getenv("LC_COOKIES"):  # optional: Netscape-format cookies text for yt-dlp
+    _cf = Path(tempfile.gettempdir()) / "lc_cookies.txt"
+    _cf.write_text(os.environ["LC_COOKIES"].replace("\\n", "\n"))
+    os.environ["LC_COOKIES_FILE"] = str(_cf)
 
 
 def run_job(jid, body):
@@ -134,14 +141,43 @@ class H(BaseHTTPRequestHandler):
                     break
                 left -= len(chunk)
 
+    def _upload(self):
+        size = int(self.headers.get("Content-Length", 0))
+        if size <= 0 or size > MAX_MB * 1024 * 1024:
+            return self._json({"error": f"File must be under {MAX_MB} MB."}, 413)
+        ext = os.path.splitext(self.headers.get("X-Filename", ""))[1].lower()
+        if ext not in (".mp4", ".mov", ".mkv", ".webm", ".m4v", ".avi", ".mp3", ".wav", ".m4a"):
+            return self._json({"error": "Unsupported file type."}, 400)
+        dest = UPLOADS / f"{uuid.uuid4().hex[:12]}{ext}"
+        left = size
+        with open(dest, "wb") as fh:
+            while left > 0:
+                chunk = self.rfile.read(min(1 << 20, left))
+                if not chunk:
+                    break
+                fh.write(chunk)
+                left -= len(chunk)
+        if left:
+            dest.unlink(missing_ok=True)
+            return self._json({"error": "Upload interrupted."}, 400)
+        self._json({"path": str(dest)})
+
     def do_POST(self):
-        if not self._host_ok() or self.path != "/api/start":
+        if not self._host_ok():
             return self._json({"error": "forbidden"}, 403)
+        if self.path == "/api/upload":
+            return self._upload()
+        if self.path != "/api/start":
+            return self._json({"error": "not found"}, 404)
         try:
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
             src = str(body.get("source", "")).strip()
             if not src or src.startswith("-"):
-                return self._json({"error": "Enter a video link or file path."}, 400)
+                return self._json({"error": "Enter a video link or pick a file."}, 400)
+            if LAN and not src.lower().startswith(("http://", "https://")):
+                # online mode: only files uploaded through this page
+                if not Path(src).resolve().is_relative_to(UPLOADS.resolve()) or not os.path.isfile(src):
+                    return self._json({"error": "Use a link or upload a file."}, 400)
             if any(j["status"] == "running" for j in JOBS.values()):
                 return self._json({"error": "A job is already running."}, 409)
             body["source"] = src

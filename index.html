@@ -23,6 +23,8 @@ pre{background:var(--card);border-radius:10px;padding:12px;max-height:220px;over
 <h1>localclip</h1><p class="sub">Paste a video link. Clips are made on your own computer.</p>
 <label>Video link (YouTube, Twitch, Kick…) or file path</label>
 <input id="source" placeholder="https://www.youtube.com/watch?v=…" autofocus>
+<label>…or upload a video file (works when YouTube blocks the link)</label>
+<input id="file" type="file" accept="video/*,audio/*">
 <div class="row">
  <div><label>Clips</label><input id="n" type="number" value="5" min="1" max="20"></div>
  <div><label>Min sec</label><input id="min" type="number" value="20"></div>
@@ -48,7 +50,11 @@ fetch('/api/config').then(r=>r.json()).then(c=>{
 });
 $('go').onclick=async()=>{
  $('err').textContent='';$('clips').innerHTML='';$('log').hidden=false;$('log').textContent='Starting…';
- const body={source:$('source').value,n:+$('n').value,min:+$('min').value,max:+$('max').value,
+ let source=$('source').value;const f=$('file').files[0];
+ if(f){$('go').disabled=true;$('log').textContent='Uploading '+f.name+'…';
+  const u=await fetch('/api/upload',{method:'POST',headers:{'X-Filename':f.name},body:f});const uj=await u.json();
+  $('go').disabled=false;if(!u.ok){$('err').textContent=uj.error;return}source=uj.path;}
+ const body={source:source,n:+$('n').value,min:+$('min').value,max:+$('max').value,
   captions:$('captions').checked,provider:$('provider').value,model:$('model').value,key:$('key').value,base_url:$('base_url').value};
  const r=await fetch('/api/start',{method:'POST',body:JSON.stringify(body)});const j=await r.json();
  if(!r.ok){$('err').textContent=j.error;return}
