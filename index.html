@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>localclip</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--mut:#6b6b6b;--card:#f4f4f2;--line:#dcdcd8;--acc:#d9531e}
+@media(prefers-color-scheme:dark){:root{--bg:#161615;--fg:#eee;--mut:#9a9a96;--card:#222221;--line:#3a3a38}}
+*{box-sizing:border-box}body{margin:0;font:16px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+main{max-width:760px;margin:0 auto;padding:24px 16px 64px}
+h1{margin:0 0 4px;font-size:26px}.sub{color:var(--mut);margin:0 0 20px}
+input,select,button{font:inherit;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%}
+button{background:var(--acc);color:#fff;border:0;font-weight:600;cursor:pointer}button:disabled{opacity:.5}
+label{display:block;font-size:13px;color:var(--mut);margin:12px 0 4px}
+.row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+details{margin:14px 0;border:1px solid var(--line);border-radius:10px;padding:10px 12px}summary{cursor:pointer;font-weight:600}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+pre{background:var(--card);border-radius:10px;padding:12px;max-height:220px;overflow:auto;font-size:12px;white-space:pre-wrap}
+.clips{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;margin-top:16px}
+.clip{background:var(--card);border-radius:12px;padding:10px}video{width:100%;border-radius:8px;aspect-ratio:9/16;background:#000}
+.clip b{display:block;margin:8px 0 2px}.clip a{color:var(--acc);font-size:14px}
+#err{color:#c0392b}.chk{display:flex;gap:8px;align-items:center;margin-top:12px}.chk input{width:auto}
+</style></head><body><main>
+<h1>localclip</h1><p class="sub">Paste a video link. Clips are made on your own computer.</p>
+<label>Video link (YouTube, Twitch, Kick…) or file path</label>
+<input id="source" placeholder="https://www.youtube.com/watch?v=…" autofocus>
+<div class="row">
+ <div><label>Clips</label><input id="n" type="number" value="5" min="1" max="20"></div>
+ <div><label>Min sec</label><input id="min" type="number" value="20"></div>
+ <div><label>Max sec</label><input id="max" type="number" value="60"></div>
+</div>
+<label class="chk"><input id="captions" type="checkbox" checked> Burn in captions + hook</label>
+<details><summary>AI provider (optional, leave blank to use .env)</summary>
+ <div class="two">
+  <div><label>Provider</label><select id="provider"></select></div>
+  <div><label>Model id</label><input id="model" placeholder="exact model id"></div>
+ </div>
+ <label>API key (kept in memory only, never saved)</label><input id="key" type="password" autocomplete="off">
+ <label>Base URL (custom provider only)</label><input id="base_url" placeholder="http://localhost:1234/v1">
+ <p class="sub" id="cfg"></p>
+</details>
+<button id="go">Make clips</button>
+<p id="err"></p><pre id="log" hidden></pre><div class="clips" id="clips"></div>
+<script>
+const $=id=>document.getElementById(id);let timer;
+fetch('/api/config').then(r=>r.json()).then(c=>{
+ $('provider').innerHTML='<option value="">(use .env)</option>'+c.providers.map(p=>`<option>${p}</option>`).join('');
+ $('cfg').textContent=c.provider?`.env: ${c.provider} / ${c.model}${c.has_key?' / key set':''}`:'No .env AI set: clips will be picked by speech density.';
+});
+$('go').onclick=async()=>{
+ $('err').textContent='';$('clips').innerHTML='';$('log').hidden=false;$('log').textContent='Starting…';
+ const body={source:$('source').value,n:+$('n').value,min:+$('min').value,max:+$('max').value,
+  captions:$('captions').checked,provider:$('provider').value,model:$('model').value,key:$('key').value,base_url:$('base_url').value};
+ const r=await fetch('/api/start',{method:'POST',body:JSON.stringify(body)});const j=await r.json();
+ if(!r.ok){$('err').textContent=j.error;return}
+ $('go').disabled=true;poll(j.id);
+};
+function poll(id){timer=setInterval(async()=>{
+ const j=await (await fetch('/api/job/'+id)).json();
+ $('log').textContent=j.log.join('\n');$('log').scrollTop=1e9;
+ if(j.status!=='running'){clearInterval(timer);$('go').disabled=false;
+  if(j.status==='error')$('err').textContent='Something failed. Check the log above.';
+  $('clips').innerHTML=j.clips.map(c=>`<div class="clip"><video controls preload="metadata" src="/files/${id}/${c.file}"></video>
+   <b>${esc(c.title||c.file)}</b><a href="/files/${id}/${c.file}" download>Download</a></div>`).join('');}
+},1500)}
+const esc=s=>String(s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+</script></main></body></html>
