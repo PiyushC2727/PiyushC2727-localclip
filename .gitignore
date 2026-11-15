@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Environment Variables & Secrets
+.env
+.env.local
+lc_cookies.txt
+
+# Local Output & Temp Job Files
+jobs/
+output/
+_work/
+uploads/
+*.mp4
+*.mkv
+*.mov
+*.ass
+
+# IDEs
+.idea/
+.vscode/
+*.swp

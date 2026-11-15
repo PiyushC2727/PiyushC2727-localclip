@@ -9,6 +9,8 @@ your AI of choice picks the best moments → ffmpeg cuts 9:16 clips with word-by
 3. `cp .env.example .env` and set `LC_PROVIDER`, `LC_MODEL`, `LC_KEY`.
 
 ## Use in your browser (easiest)
+On Windows, simply double-click `run_local.bat`, or in terminal:
+
     python server.py
 
 Opens http://127.0.0.1:8765 automatically. Paste a link, press **Make clips**, watch progress, preview and download clips.
@@ -16,6 +18,7 @@ You can pick the AI provider and paste a key right in the page (kept in memory o
 
 ## Use from your phone
 `127.0.0.1` on a phone means the phone itself, so run the server on your computer in phone mode:
+On Windows, double-click `run_lan.bat`, or in terminal:
 
     python server.py --lan
 
