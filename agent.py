@@ -145,16 +145,49 @@ def transcribe(video: Path, work: Path, model_size: str, progress_cb=None):
 
     device = get_whisper_device()
     compute_type = "float16" if device == "cuda" else "int8"
-    print(f"Transcribing locally (whisper {model_size} on {device.upper()}/{compute_type})…")
+    threads = os.cpu_count() or 4
+    print(f"Transcribing locally (whisper {model_size} on {device.upper()}/{compute_type}, {threads} threads)…")
     if progress_cb:
-        progress_cb("transcribe", 15, f"Loading Whisper model ({model_size} on {device.upper()})…")
+        progress_cb("transcribe", 10, f"Loading Whisper ({model_size} on {device.upper()})…")
 
-    model = WhisperModel(model_size, device=device, compute_type=compute_type)
+    # Extract 16kHz mono audio first with FFmpeg for 3x-5x faster Whisper ingestion
+    audio_wav = work / "audio_16k.wav"
+    audio_target = str(video)
+    ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
+    try:
+        if not audio_wav.exists() or audio_wav.stat().st_size == 0:
+            if progress_cb:
+                progress_cb("transcribe", 15, "Extracting audio stream (FFmpeg)...")
+            subprocess.run([
+                ffmpeg_bin, "-y", "-loglevel", "error",
+                "-i", str(video),
+                "-vn", "-ac", "1", "-ar", "16000",
+                "-c:a", "pcm_s16le",
+                str(audio_wav)
+            ], check=True)
+        if audio_wav.exists() and audio_wav.stat().st_size > 0:
+            audio_target = str(audio_wav)
+    except Exception as e:
+        print(f"Audio extraction fallback: {e}")
+        audio_target = str(video)
+
+    model = WhisperModel(
+        model_size,
+        device=device,
+        compute_type=compute_type,
+        cpu_threads=threads,
+        num_workers=max(1, threads // 2)
+    )
 
     if progress_cb:
-        progress_cb("transcribe", 35, "Running speech recognition with word timestamps…")
+        progress_cb("transcribe", 30, f"Transcribing audio with {threads} CPU threads…")
 
-    segs, info = model.transcribe(str(video), word_timestamps=True, vad_filter=True)
+    segs, info = model.transcribe(
+        audio_target,
+        word_timestamps=True,
+        vad_filter=True,
+        vad_parameters=dict(min_silence_duration_ms=500)
+    )
     duration = getattr(info, "duration", 0) or 1.0
 
     data = []
@@ -415,15 +448,16 @@ def render(video: Path, clip, words, out_dir: Path, idx: int,
     ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
     cmd = [
         ffmpeg_bin, "-y", "-loglevel", "error",
+        "-threads", str(os.cpu_count() or 4),
         "-ss", f"{start:.2f}",
         "-i", str(video),
         "-t", f"{end - start:.2f}",
         "-vf", vf,
         "-c:v", "libx264",
-        "-preset", "veryfast",
-        "-crf", "20",
+        "-preset", "ultrafast",
+        "-crf", "22",
         "-c:a", "aac",
-        "-b:a", "192k",
+        "-b:a", "128k",
         "-movflags", "+faststart",
         f"{name}.mp4",
     ]
@@ -440,7 +474,7 @@ def main():
     ap.add_argument("-n", "--clips", type=int, default=5, help="Number of clips to generate")
     ap.add_argument("--min", type=int, default=20, help="Min clip seconds")
     ap.add_argument("--max", type=int, default=60, help="Max clip seconds")
-    ap.add_argument("--whisper", default=os.getenv("LC_WHISPER", "small"), help="Whisper model size")
+    ap.add_argument("--whisper", default=os.getenv("LC_WHISPER", "base"), help="Whisper model size")
     ap.add_argument("--framing", choices=["crop", "blur"], default=os.getenv("LC_FRAMING", "crop"),
                     help="Framing: 'crop' (center crop) or 'blur' (blurred background)")
     ap.add_argument("--caption-style", choices=["karaoke", "classic"], default="karaoke",

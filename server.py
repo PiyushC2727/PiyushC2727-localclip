@@ -223,7 +223,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 "provider": os.getenv("LC_PROVIDER", "gemini"),
                 "model": os.getenv("LC_MODEL", "gemini-1.5-flash"),
                 "has_key": bool(os.getenv("LC_KEY")),
-                "whisper": os.getenv("LC_WHISPER", "small"),
+                "whisper": os.getenv("LC_WHISPER", "base"),
                 "framing": os.getenv("LC_FRAMING", "crop"),
                 "providers": list(ai.PROVIDERS.keys()),
                 "default_models": {p: ai.get_default_models(p) for p in ai.PROVIDERS},

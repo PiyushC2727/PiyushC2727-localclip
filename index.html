@@ -513,13 +513,13 @@
               <input id="ai-model" placeholder="e.g. gemini-1.5-flash">
             </div>
             <div>
-              <label for="whisper-size">Whisper Model Size</label>
+              <label for="whisper-size">Whisper Model Speed / Size</label>
               <select id="whisper-size">
-                <option value="small" selected>small (Fast & accurate)</option>
-                <option value="base">base (Lightweight, low RAM)</option>
-                <option value="tiny">tiny (Ultra fast)</option>
-                <option value="medium">medium (High precision)</option>
-                <option value="large-v3">large-v3 (Maximum quality)</option>
+                <option value="tiny">⚡ tiny (Ultra Fast — ~5-10s, best for CPU)</option>
+                <option value="base" selected>⚡ base (Fast & Balanced — Recommended)</option>
+                <option value="small">🐢 small (High Accuracy — Slower on CPU)</option>
+                <option value="medium">medium (Heavy)</option>
+                <option value="large-v3">large-v3 (GPU Only)</option>
               </select>
             </div>
           </div>
