@@ -622,6 +622,19 @@
         $('active-cfg-badge').textContent = data.has_key
           ? `✓ .env set: ${data.provider} (${data.model})`
           : `Speech density fallback (No .env key)`;
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const queryJob = urlParams.get('job') || (data.recent_jobs && data.recent_jobs[0]);
+        if (queryJob) {
+          fetch('/api/job/' + queryJob)
+            .then(res => res.json())
+            .then(jobData => {
+              if (jobData && jobData.clips && jobData.clips.length) {
+                renderClips(jobData.clips, queryJob);
+              }
+            })
+            .catch(() => {});
+        }
       })
       .catch(err => console.error("Config fetch error:", err));
 

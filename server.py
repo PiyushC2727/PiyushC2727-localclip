@@ -222,6 +222,18 @@ class RequestHandler(BaseHTTPRequestHandler):
         # 2. Config Endpoint
         elif path == "/api/config":
             import ai
+            recent = []
+            try:
+                for p in JOBS_DIR.iterdir():
+                    if p.is_dir() and (p / "clips.json").is_file():
+                        recent.append({
+                            "id": p.name,
+                            "time": p.stat().st_mtime,
+                        })
+                recent.sort(key=lambda x: x["time"], reverse=True)
+            except Exception:
+                pass
+
             self._json({
                 "provider": os.getenv("LC_PROVIDER", "gemini"),
                 "model": os.getenv("LC_MODEL", "gemini-1.5-flash"),
@@ -231,10 +243,11 @@ class RequestHandler(BaseHTTPRequestHandler):
                 "providers": list(ai.PROVIDERS.keys()),
                 "default_models": {p: ai.get_default_models(p) for p in ai.PROVIDERS},
                 "max_mb": MAX_MB,
+                "recent_jobs": [r["id"] for r in recent[:5]],
             })
 
         # 3. Server-Sent Events (SSE) for Real-Time Streaming
-        elif (m := re.fullmatch(r"/api/events/([0-9a-f]{12})", path)):
+        elif (m := re.fullmatch(r"/api/events/([a-zA-Z0-9_-]+)", path)):
             jid = m.group(1)
             job = JOBS.get(jid)
             if not job:
@@ -283,19 +296,34 @@ class RequestHandler(BaseHTTPRequestHandler):
                     if q in job["listeners"]:
                         job["listeners"].remove(q)
 
-        # 4. Job Status Fallback Polling
-        elif (m := re.fullmatch(r"/api/job/([0-9a-f]{12})", path)):
+        # 4. Job Status Fallback Polling / Retrieval
+        elif (m := re.fullmatch(r"/api/job/([a-zA-Z0-9_-]+)", path)):
             jid = m.group(1)
             j = JOBS.get(jid)
             if j:
                 # Return state without non-serializable listeners
                 safe_job = {k: v for k, v in j.items() if k != "listeners"}
                 self._json(safe_job, 200)
+            elif (JOBS_DIR / jid / "clips.json").is_file():
+                try:
+                    clips = json.loads((JOBS_DIR / jid / "clips.json").read_text(encoding="utf-8"))
+                    safe_job = {
+                        "id": jid,
+                        "status": "done",
+                        "stage": "completed",
+                        "progress": 100,
+                        "message": "Completed",
+                        "log": ["Loaded from disk"],
+                        "clips": clips,
+                    }
+                    self._json(safe_job, 200)
+                except Exception as e:
+                    self._json({"error": f"Failed reading job clips: {e}"}, 500)
             else:
                 self._json({"error": "Job not found"}, 404)
 
         # 5. Serve Video Files with Partial Content (HTTP 206)
-        elif (m := re.fullmatch(r"/files/([0-9a-f]{12})/([\w.-]+\.mp4)", path)):
+        elif (m := re.fullmatch(r"/files/([a-zA-Z0-9_-]+)/([\w.-]+\.mp4)", path)):
             self._serve_video(JOBS_DIR / m.group(1) / m.group(2))
 
         else:
