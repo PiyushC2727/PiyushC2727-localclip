@@ -134,8 +134,8 @@ def get_whisper_device():
     return "cpu"
 
 
-def transcribe(video: Path, work: Path, model_size: str, progress_cb=None):
-    cache = work / "transcript.json"
+def transcribe(video: Path, work: Path, model_size: str, scan_mins: int = 0, progress_cb=None):
+    cache = work / f"transcript{f'_first{scan_mins}m' if scan_mins > 0 else ''}.json"
     if cache.exists():
         if progress_cb:
             progress_cb("transcribe", 100, "Using cached transcript.")
@@ -146,21 +146,24 @@ def transcribe(video: Path, work: Path, model_size: str, progress_cb=None):
     device = get_whisper_device()
     compute_type = "float16" if device == "cuda" else "int8"
     threads = os.cpu_count() or 4
-    print(f"Transcribing locally (whisper {model_size} on {device.upper()}/{compute_type}, {threads} threads)…")
+    scan_label = f" (first {scan_mins}m)" if scan_mins > 0 else ""
+    print(f"Transcribing locally (whisper {model_size} on {device.upper()}/{compute_type}, {threads} threads{scan_label})…")
     if progress_cb:
-        progress_cb("transcribe", 10, f"Loading Whisper ({model_size} on {device.upper()})…")
+        progress_cb("transcribe", 10, f"Loading Whisper ({model_size} on {device.upper()}{scan_label})…")
 
     # Extract 16kHz mono audio first with FFmpeg for 3x-5x faster Whisper ingestion
-    audio_wav = work / "audio_16k.wav"
+    audio_wav = work / f"audio_16k{f'_first{scan_mins}m' if scan_mins > 0 else ''}.wav"
     audio_target = str(video)
     ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
     try:
         if not audio_wav.exists() or audio_wav.stat().st_size == 0:
             if progress_cb:
-                progress_cb("transcribe", 15, "Extracting audio stream (FFmpeg)...")
+                progress_cb("transcribe", 15, f"Extracting audio stream{scan_label}...")
+            limit_args = ["-t", str(scan_mins * 60)] if scan_mins > 0 else []
             subprocess.run([
                 ffmpeg_bin, "-y", "-loglevel", "error",
                 "-i", str(video),
+                *limit_args,
                 "-vn", "-ac", "1", "-ar", "16000",
                 "-c:a", "pcm_s16le",
                 str(audio_wav)
@@ -475,6 +478,7 @@ def main():
     ap.add_argument("--min", type=int, default=20, help="Min clip seconds")
     ap.add_argument("--max", type=int, default=60, help="Max clip seconds")
     ap.add_argument("--whisper", default=os.getenv("LC_WHISPER", "base"), help="Whisper model size")
+    ap.add_argument("--scan-mins", type=int, default=0, help="Scan only first N minutes of video (0 = all)")
     ap.add_argument("--framing", choices=["crop", "blur"], default=os.getenv("LC_FRAMING", "crop"),
                     help="Framing: 'crop' (center crop) or 'blur' (blurred background)")
     ap.add_argument("--caption-style", choices=["karaoke", "classic"], default="karaoke",
@@ -492,7 +496,7 @@ def main():
         print(f"[{stage.upper()}] {pct}% - {msg}")
 
     video = fetch(args.source, work, progress_cb=progress_cli)
-    segs = transcribe(video, work, args.whisper, progress_cb=progress_cli)
+    segs = transcribe(video, work, args.whisper, scan_mins=args.scan_mins, progress_cb=progress_cli)
     if not segs:
         sys.exit("No speech detected in video.")
 

@@ -99,6 +99,9 @@ def run_job(jid, body):
     if body.get("whisper"):
         cmd.extend(["--whisper", str(body["whisper"])])
 
+    if body.get("scan_mins") is not None:
+        cmd.extend(["--scan-mins", str(int(body["scan_mins"]))])
+
     if not body.get("captions", True):
         cmd.append("--no-captions")
 
