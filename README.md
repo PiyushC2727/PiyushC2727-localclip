@@ -1,53 +1,113 @@
-# localclip
+# ⚡ LocalClip
 
-Your own local clipping agent. Paste a link or a file → transcribes on your machine →
-your AI of choice picks the best moments → ffmpeg cuts 9:16 clips with word-by-word captions and a hook.
+> **Your private, on-device AI short-form video clipper.**  
+> Paste a link or upload a file $\to$ transcribes on your machine with Whisper $\to$ AI picks high-retention viral moments $\to$ FFmpeg cuts 9:16 vertical clips with word-by-word animated captions and hooks.
 
-## Setup
-1. Install Python 3.10+ and `ffmpeg` (on PATH).
-2. `pip install -r requirements.txt`
-3. `cp .env.example .env` and set `LC_PROVIDER`, `LC_MODEL`, `LC_KEY`.
+---
 
-## Use in your browser (easiest)
-On Windows, simply double-click `run_local.bat`, or in terminal:
+## ✨ Features
 
-    python server.py
+- 🔒 **100% On-Device Transcription:** Runs locally using `faster-whisper` (CTranslate2) with GPU/CPU acceleration. No audio leaves your computer.
+- 🤖 **Bring Any AI Key:** Plug in Gemini, OpenAI, Groq, DeepSeek, Anthropic, xAI, OpenRouter, or **100% free local Ollama**. If no AI key is provided, it automatically falls back to speech-density heuristics.
+- 🎨 **Animated Karaoke Captions:** Dynamic word-by-word active bounce highlight (Alex Hormozi style) + on-screen hook banners burned directly via FFmpeg.
+- 📐 **Smart Framing:** Choose between standard 9:16 vertical crop or **9:16 Blurred Background** (keeps 16:9 widescreen video centered without cutting off speakers).
+- 📱 **Phone Mode (LAN Access):** Preview and download clips directly onto your phone over local Wi-Fi with one-time secure token authentication.
+- ⚡ **Zero Framework Bloat:** Ultra-fast, single-process architecture with real-time Server-Sent Events (SSE) and HTTP 206 video streaming.
 
-Opens http://127.0.0.1:8765 automatically. Paste a link, press **Make clips**, watch progress, preview and download clips.
-You can pick the AI provider and paste a key right in the page (kept in memory only).
+---
 
-## Use from your phone
-`127.0.0.1` on a phone means the phone itself, so run the server on your computer in phone mode:
-On Windows, double-click `run_lan.bat`, or in terminal:
+## 🚀 Quick Setup
 
-    python server.py --lan
+### 1. Prerequisites
+- **Python 3.10+**
+- **FFmpeg** installed and added to your system `PATH`.
 
-It prints a link like `http://192.168.1.20:8765/?token=…`. Open it on your phone (same Wi-Fi as the computer).
-The secret token is required; don't share the link. Allow Python through the firewall if asked (private networks only).
+### 2. Installation
+```bash
+# Clone the repository
+git clone https://github.com/PiyushC2727/PiyushC2727-localclip.git
+cd PiyushC2727-localclip
 
-## Use from the command line
-    python agent.py "https://youtube.com/watch?v=..." -n 5 --min 20 --max 60
-    python agent.py my_stream.mp4 --no-captions -o clips/
+# Install dependencies (using uv or pip)
+pip install -r requirements.txt
+```
 
-Clips and `clips.json` (titles, hooks, timestamps) land in `output/`.
-No AI key? It still works, picking the most talkative stretches.
+### 3. Configure AI (Optional)
+Copy the example environment file:
+```bash
+cp .env.example .env
+```
+Open `.env` and set your preferred provider:
+```ini
+LC_PROVIDER=gemini
+LC_MODEL=gemini-1.5-flash
+LC_KEY=your_api_key_here
+```
+*(You can also paste your API key directly in the web UI at runtime—it is held in memory and never logged).*
 
-## Providers
-openai, anthropic, gemini, xai, groq, openrouter, ollama (local, no key), custom (any OpenAI-compatible URL).
-To add one, add a line to `PROVIDERS` in `ai.py`.
+---
 
-## Ideas to extend
-- Face-tracking crop instead of center crop
-- Auto-post to YouTube Shorts / Reels
-- Live-stream mode: record in segments and run the pipeline on each
+## 🖥️ Usage
 
-## Host it online (get a link that works anywhere)
-Needs a host that runs Docker (Render, Railway, Fly.io, a VPS). Push this folder to a GitHub repo, create a
-"Web Service" from it, and set environment variables: `LC_TOKEN` (a long secret password),
-`LC_PROVIDER`, `LC_MODEL`, `LC_KEY`. Your link is `https://YOUR-APP.onrender.com/?token=YOUR_LC_TOKEN`.
-Use at least 2 GB RAM (speech model), and set `LC_WHISPER=base` if memory is tight.
-Note: YouTube often blocks downloads from cloud servers; uploading/using your own files is more reliable there.
+### Web Dashboard (Recommended)
+On **Windows**, double-click `run_local.bat`, or in terminal:
+```bash
+python server.py
+```
+Automatically opens `http://127.0.0.1:8765`. Paste a YouTube link or upload a video, tweak parameters, and hit **Make Viral Clips**.
 
-## If YouTube blocks the link
-Cloud servers are often blocked by YouTube ("Sign in to confirm you're not a bot"). Use the **upload a video file** picker on the page instead. Limit: `LC_MAX_MB` (default 500).
-Advanced: set `LC_COOKIES` to a Netscape-format cookies.txt (use a throwaway account; cookies expire and this may still fail).
+### Mobile Phone Access (Over Wi-Fi)
+On **Windows**, double-click `run_lan.bat`, or in terminal:
+```bash
+python server.py --lan
+```
+It prints a secure LAN URL with a token:
+```
+http://192.168.1.50:8765/?token=secret_token
+```
+Open this link in your phone's browser on the same Wi-Fi network to generate, preview, and download clips directly to your camera roll.
+
+### Command Line Interface (CLI)
+```bash
+# Clip a YouTube video with default settings
+python agent.py "https://www.youtube.com/watch?v=..." -n 5 --min 20 --max 60
+
+# Clip a local video with blurred background and cyan subtitles
+python agent.py podcast.mp4 --framing blur --caption-color cyan -o output/
+
+# No-captions export
+python agent.py stream.mp4 --no-captions -o clips/
+```
+
+---
+
+## 🤖 Supported AI Providers
+
+| Provider | Default Models | Requires Key? |
+| :--- | :--- | :---: |
+| **Gemini** | `gemini-1.5-flash`, `gemini-2.0-flash` | Yes (Free tier available) |
+| **Groq** | `llama-3.3-70b-versatile`, `llama-3.1-8b-instant` | Yes (Ultra fast) |
+| **OpenAI** | `gpt-4o-mini`, `gpt-4o` | Yes |
+| **DeepSeek** | `deepseek-chat` | Yes |
+| **Anthropic**| `claude-3-5-haiku-20241022` | Yes |
+| **Ollama** | `llama3.2`, `mistral` | **No** (100% offline & free) |
+| **Speech Density** | None | **No** (Built-in offline fallback) |
+
+---
+
+## 🐳 Docker Deployment
+
+To run in Docker (e.g. for Render, Railway, Fly.io, or your home server):
+```bash
+docker build -t localclip .
+docker run -p 8765:8765 \
+  -e LC_PROVIDER=gemini \
+  -e LC_KEY=your_key \
+  -e LC_TOKEN=your_secure_password \
+  localclip
+```
+
+---
+
+## 📄 License
+MIT License. Free to use, modify, and build upon.

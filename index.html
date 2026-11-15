@@ -1,72 +1,914 @@
 <!doctype html>
-<html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>localclip</title>
-<style>
-:root{--bg:#fff;--fg:#1a1a1a;--mut:#6b6b6b;--card:#f4f4f2;--line:#dcdcd8;--acc:#d9531e}
-@media(prefers-color-scheme:dark){:root{--bg:#161615;--fg:#eee;--mut:#9a9a96;--card:#222221;--line:#3a3a38}}
-*{box-sizing:border-box}body{margin:0;font:16px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
-main{max-width:760px;margin:0 auto;padding:24px 16px 64px}
-h1{margin:0 0 4px;font-size:26px}.sub{color:var(--mut);margin:0 0 20px}
-input,select,button{font:inherit;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%}
-button{background:var(--acc);color:#fff;border:0;font-weight:600;cursor:pointer}button:disabled{opacity:.5}
-label{display:block;font-size:13px;color:var(--mut);margin:12px 0 4px}
-.row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-details{margin:14px 0;border:1px solid var(--line);border-radius:10px;padding:10px 12px}summary{cursor:pointer;font-weight:600}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-pre{background:var(--card);border-radius:10px;padding:12px;max-height:220px;overflow:auto;font-size:12px;white-space:pre-wrap}
-.clips{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;margin-top:16px}
-.clip{background:var(--card);border-radius:12px;padding:10px}video{width:100%;border-radius:8px;aspect-ratio:9/16;background:#000}
-.clip b{display:block;margin:8px 0 2px}.clip a{color:var(--acc);font-size:14px}
-#err{color:#c0392b}.chk{display:flex;gap:8px;align-items:center;margin-top:12px}.chk input{width:auto}
-</style></head><body><main>
-<h1>localclip</h1><p class="sub">Paste a video link. Clips are made on your own computer.</p>
-<label>Video link (YouTube, Twitch, Kick…) or file path</label>
-<input id="source" placeholder="https://www.youtube.com/watch?v=…" autofocus>
-<label>…or upload a video file (works when YouTube blocks the link)</label>
-<input id="file" type="file" accept="video/*,audio/*">
-<div class="row">
- <div><label>Clips</label><input id="n" type="number" value="5" min="1" max="20"></div>
- <div><label>Min sec</label><input id="min" type="number" value="20"></div>
- <div><label>Max sec</label><input id="max" type="number" value="60"></div>
-</div>
-<label class="chk"><input id="captions" type="checkbox" checked> Burn in captions + hook</label>
-<details><summary>AI provider (optional, leave blank to use .env)</summary>
- <div class="two">
-  <div><label>Provider</label><select id="provider"></select></div>
-  <div><label>Model id</label><input id="model" placeholder="exact model id"></div>
- </div>
- <label>API key (kept in memory only, never saved)</label><input id="key" type="password" autocomplete="off">
- <label>Base URL (custom provider only)</label><input id="base_url" placeholder="http://localhost:1234/v1">
- <p class="sub" id="cfg"></p>
-</details>
-<button id="go">Make clips</button>
-<p id="err"></p><pre id="log" hidden></pre><div class="clips" id="clips"></div>
-<script>
-const $=id=>document.getElementById(id);let timer;
-fetch('/api/config').then(r=>r.json()).then(c=>{
- $('provider').innerHTML='<option value="">(use .env)</option>'+c.providers.map(p=>`<option>${p}</option>`).join('');
- $('cfg').textContent=c.provider?`.env: ${c.provider} / ${c.model}${c.has_key?' / key set':''}`:'No .env AI set: clips will be picked by speech density.';
-});
-$('go').onclick=async()=>{
- $('err').textContent='';$('clips').innerHTML='';$('log').hidden=false;$('log').textContent='Starting…';
- let source=$('source').value;const f=$('file').files[0];
- if(f){$('go').disabled=true;$('log').textContent='Uploading '+f.name+'…';
-  const u=await fetch('/api/upload',{method:'POST',headers:{'X-Filename':f.name},body:f});const uj=await u.json();
-  $('go').disabled=false;if(!u.ok){$('err').textContent=uj.error;return}source=uj.path;}
- const body={source:source,n:+$('n').value,min:+$('min').value,max:+$('max').value,
-  captions:$('captions').checked,provider:$('provider').value,model:$('model').value,key:$('key').value,base_url:$('base_url').value};
- const r=await fetch('/api/start',{method:'POST',body:JSON.stringify(body)});const j=await r.json();
- if(!r.ok){$('err').textContent=j.error;return}
- $('go').disabled=true;poll(j.id);
-};
-function poll(id){timer=setInterval(async()=>{
- const j=await (await fetch('/api/job/'+id)).json();
- $('log').textContent=j.log.join('\n');$('log').scrollTop=1e9;
- if(j.status!=='running'){clearInterval(timer);$('go').disabled=false;
-  if(j.status==='error')$('err').textContent='Something failed. Check the log above.';
-  $('clips').innerHTML=j.clips.map(c=>`<div class="clip"><video controls preload="metadata" src="/files/${id}/${c.file}"></video>
-   <b>${esc(c.title||c.file)}</b><a href="/files/${id}/${c.file}" download>Download</a></div>`).join('');}
-},1500)}
-const esc=s=>String(s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
-</script></main></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LocalClip — AI Video Clipper & Subtitles</title>
+  <style>
+    :root {
+      --bg: #0b0d13;
+      --surface: #131722;
+      --surface-2: #1a2030;
+      --surface-border: #232a3f;
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --accent: #f59e0b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --success: #10b981;
+      --danger: #ef4444;
+      --radius: 12px;
+      --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      line-height: 1.5;
+      min-height: 100vh;
+      padding: 32px 16px 80px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 28px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--surface-border);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .logo-badge {
+      width: 42px;
+      height: 42px;
+      background: linear-gradient(135deg, #6366f1, #a855f7);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+    }
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    .tagline {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      background: var(--surface-2);
+      border: 1px solid var(--surface-border);
+      padding: 6px 12px;
+      border-radius: 999px;
+      color: var(--text-muted);
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+    }
+
+    /* Cards */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: var(--shadow);
+    }
+
+    /* Tabs */
+    .tab-nav {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 18px;
+      background: var(--surface-2);
+      padding: 4px;
+      border-radius: 10px;
+      border: 1px solid var(--surface-border);
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 10px 16px;
+      background: transparent;
+      border: 0;
+      border-radius: 8px;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tab-btn.active {
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+
+    /* Form Fields */
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+    .input-row {
+      display: flex;
+      gap: 10px;
+    }
+    input, select {
+      width: 100%;
+      background: var(--surface-2);
+      border: 1px solid var(--surface-border);
+      color: var(--text);
+      padding: 12px 14px;
+      border-radius: 8px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus, select:focus {
+      border-color: var(--primary);
+    }
+    .btn-secondary {
+      background: var(--surface-2);
+      border: 1px solid var(--surface-border);
+      color: var(--text);
+      padding: 0 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+    .btn-secondary:hover {
+      background: var(--surface-border);
+    }
+
+    /* Grid Options */
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    /* Dropdown accordion */
+    details {
+      margin-top: 16px;
+      background: var(--surface-2);
+      border: 1px solid var(--surface-border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    summary {
+      padding: 14px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      user-select: none;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .details-content {
+      padding: 16px;
+      border-top: 1px solid var(--surface-border);
+      background: var(--surface);
+    }
+
+    /* CTA Button */
+    .cta-btn {
+      width: 100%;
+      padding: 16px;
+      margin-top: 20px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: #fff;
+      border: 0;
+      border-radius: var(--radius);
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      box-shadow: 0 8px 20px rgba(99, 102, 241, 0.35);
+      transition: all 0.2s;
+    }
+    .cta-btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 25px rgba(99, 102, 241, 0.5);
+    }
+    .cta-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* Visual Stepper */
+    .pipeline-tracker {
+      display: none;
+      margin-top: 24px;
+    }
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .step-card {
+      background: var(--surface-2);
+      border: 1px solid var(--surface-border);
+      border-radius: 8px;
+      padding: 12px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      transition: all 0.3s;
+    }
+    .step-card.active {
+      border-color: var(--primary);
+      color: var(--primary);
+      background: rgba(99, 102, 241, 0.1);
+    }
+    .step-card.done {
+      border-color: var(--success);
+      color: var(--success);
+      background: rgba(16, 185, 129, 0.1);
+    }
+    .step-icon {
+      font-size: 18px;
+      margin-bottom: 4px;
+      display: block;
+    }
+
+    /* Progress bar */
+    .progress-bar-bg {
+      width: 100%;
+      height: 8px;
+      background: var(--surface-2);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+    .progress-bar-fill {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #6366f1, #a855f7);
+      border-radius: 999px;
+      transition: width 0.3s ease;
+    }
+    .progress-info {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 14px;
+    }
+
+    /* Terminal Console Drawer */
+    .console-box {
+      background: #090b10;
+      border: 1px solid var(--surface-border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      color: #cbd5e1;
+      max-height: 200px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      line-height: 1.6;
+    }
+
+    /* Clips Showcase Grid */
+    .clips-section {
+      margin-top: 36px;
+    }
+    .clips-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .clips-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 20px;
+    }
+    .clip-card {
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius);
+      padding: 14px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+    }
+    .video-wrapper {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 9/16;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #000;
+      margin-bottom: 12px;
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .score-badge {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(8px);
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #fbbf24;
+      border: 1px solid rgba(251, 191, 36, 0.4);
+    }
+    .clip-title {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      color: var(--text);
+    }
+    .clip-hook {
+      font-size: 12px;
+      color: var(--accent);
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .clip-time {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+    .btn-download {
+      margin-top: auto;
+      width: 100%;
+      padding: 10px;
+      background: var(--surface-2);
+      border: 1px solid var(--surface-border);
+      color: #fff;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .btn-download:hover {
+      background: var(--primary);
+      border-color: var(--primary);
+    }
+
+    #error-banner {
+      display: none;
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid var(--danger);
+      color: #fca5a5;
+      padding: 14px;
+      border-radius: 8px;
+      margin-top: 14px;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <div class="brand">
+        <div class="logo-badge">⚡</div>
+        <div>
+          <h1>LocalClip</h1>
+          <div class="tagline">Local AI Video Clipper & Subtitle Engine</div>
+        </div>
+      </div>
+      <div class="status-pill">
+        <div class="status-dot"></div>
+        <span id="system-status">System Ready</span>
+      </div>
+    </header>
+
+    <!-- Source Input Card -->
+    <div class="card">
+      <div class="tab-nav">
+        <button class="tab-btn active" id="tab-url" onclick="switchTab('url')">🔗 YouTube / Video Link</button>
+        <button class="tab-btn" id="tab-file" onclick="switchTab('file')">📁 Upload Video File</button>
+      </div>
+
+      <div id="section-url">
+        <label for="source-url">Video URL (YouTube, Twitch, Kick, or direct video link)</label>
+        <div class="input-row">
+          <input id="source-url" placeholder="https://www.youtube.com/watch?v=..." autofocus autocomplete="off">
+          <button class="btn-secondary" onclick="pasteClipboard()">📋 Paste</button>
+        </div>
+      </div>
+
+      <div id="section-file" style="display:none;">
+        <label for="source-file">Select Local Video File (MP4, MOV, MKV, WebM)</label>
+        <input id="source-file" type="file" accept="video/*,audio/*">
+      </div>
+
+      <!-- Quick Options -->
+      <div class="grid-3">
+        <div>
+          <label for="clips-count">Number of Clips</label>
+          <input id="clips-count" type="number" value="3" min="1" max="10">
+        </div>
+        <div>
+          <label for="min-sec">Min Duration (seconds)</label>
+          <input id="min-sec" type="number" value="20" min="5" max="300">
+        </div>
+        <div>
+          <label for="max-sec">Max Duration (seconds)</label>
+          <input id="max-sec" type="number" value="60" min="10" max="600">
+        </div>
+      </div>
+
+      <!-- Framing & Caption Customization -->
+      <div class="grid-3">
+        <div>
+          <label for="framing-mode">Framing / Aspect Ratio</label>
+          <select id="framing-mode">
+            <option value="crop">9:16 Vertical Center Crop (Standard)</option>
+            <option value="blur">9:16 Blurred Background (No Cutoff)</option>
+          </select>
+        </div>
+        <div>
+          <label for="caption-style">Subtitle Animation Style</label>
+          <select id="caption-style">
+            <option value="karaoke">✨ Karaoke Active Word Pop (Alex Hormozi)</option>
+            <option value="classic">📝 Classic Bold Clean</option>
+            <option value="none">🚫 No Captions</option>
+          </select>
+        </div>
+        <div>
+          <label for="caption-color">Highlight Accent Color</label>
+          <select id="caption-color">
+            <option value="gold">🟡 Gold / Vibrant Yellow</option>
+            <option value="cyan">🔵 Electric Cyan</option>
+            <option value="green">🟢 Neon Lime Green</option>
+            <option value="magenta">🟣 Hot Magenta</option>
+            <option value="white">⚪ Clean White</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- AI Provider Accordion -->
+      <details>
+        <summary>
+          <span>🤖 AI Provider & API Key (Optional — Configured via .env or in-memory)</span>
+          <span id="active-cfg-badge" style="font-size:11px;color:var(--text-muted);">Checking .env…</span>
+        </summary>
+        <div class="details-content">
+          <div class="grid-3" style="margin-top:0;">
+            <div>
+              <label for="ai-provider">AI Provider</label>
+              <select id="ai-provider" onchange="onProviderChange()">
+                <option value="">(Use .env setting)</option>
+              </select>
+            </div>
+            <div>
+              <label for="ai-model">Model ID</label>
+              <input id="ai-model" placeholder="e.g. gemini-1.5-flash">
+            </div>
+            <div>
+              <label for="whisper-size">Whisper Model Size</label>
+              <select id="whisper-size">
+                <option value="small" selected>small (Fast & accurate)</option>
+                <option value="base">base (Lightweight, low RAM)</option>
+                <option value="tiny">tiny (Ultra fast)</option>
+                <option value="medium">medium (High precision)</option>
+                <option value="large-v3">large-v3 (Maximum quality)</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="margin-top: 14px;">
+            <label for="ai-key">API Key (Kept securely in memory or saved to .env)</label>
+            <div class="input-row">
+              <input id="ai-key" type="password" placeholder="Paste your API key here (leave blank for Ollama)">
+              <button class="btn-secondary" onclick="toggleKeyVisibility()">👁️ Show</button>
+              <button class="btn-secondary" onclick="saveToEnv()">💾 Save to .env</button>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <button class="cta-btn" id="start-btn" onclick="startClipping()">
+        <span>⚡ Make Viral Clips</span>
+      </button>
+
+      <div id="error-banner"></div>
+    </div>
+
+    <!-- Live Pipeline Progress Tracker -->
+    <div class="card pipeline-tracker" id="tracker-card">
+      <div class="steps">
+        <div class="step-card" id="step-download">
+          <span class="step-icon">📥</span>
+          <div>1. Download</div>
+        </div>
+        <div class="step-card" id="step-transcribe">
+          <span class="step-icon">🎙️</span>
+          <div>2. Transcribe</div>
+        </div>
+        <div class="step-card" id="step-ai">
+          <span class="step-icon">🧠</span>
+          <div>3. AI Analysis</div>
+        </div>
+        <div class="step-card" id="step-render">
+          <span class="step-icon">🎬</span>
+          <div>4. Render</div>
+        </div>
+      </div>
+
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="progress-bar"></div>
+      </div>
+      <div class="progress-info">
+        <span id="progress-msg">Initializing pipeline…</span>
+        <span id="progress-pct">0%</span>
+      </div>
+
+      <details open>
+        <summary>
+          <span>📜 Live Console Log</span>
+          <span onclick="copyLogs(event)" style="font-size:11px;color:var(--primary);cursor:pointer;">Copy Log</span>
+        </summary>
+        <div class="console-box" id="console-log">Starting job…</div>
+      </details>
+    </div>
+
+    <!-- Clips Showcase Grid -->
+    <div class="clips-section" id="clips-section" style="display:none;">
+      <div class="clips-header">
+        <h2>Generated Clips</h2>
+        <span id="clips-count-badge" class="status-pill">0 clips</span>
+      </div>
+      <div class="clips-grid" id="clips-grid"></div>
+    </div>
+  </div>
+
+  <script>
+    let activeTab = 'url';
+    let currentEventSource = null;
+    let fallbackPollTimer = null;
+    let configData = {};
+
+    const $ = id => document.getElementById(id);
+
+    // Initialize config
+    fetch('/api/config')
+      .then(res => res.json())
+      .then(data => {
+        configData = data;
+        const provSelect = $('ai-provider');
+        provSelect.innerHTML = '<option value="">(Use .env default: ' + data.provider + ')</option>' +
+          data.providers.map(p => `<option value="${p}">${p.toUpperCase()}</option>`).join('');
+
+        if (data.model) $('ai-model').placeholder = data.model;
+        if (data.whisper) $('whisper-size').value = data.whisper;
+
+        $('active-cfg-badge').textContent = data.has_key
+          ? `✓ .env set: ${data.provider} (${data.model})`
+          : `Speech density fallback (No .env key)`;
+      })
+      .catch(err => console.error("Config fetch error:", err));
+
+    function switchTab(tab) {
+      activeTab = tab;
+      $('tab-url').classList.toggle('active', tab === 'url');
+      $('tab-file').classList.toggle('active', tab === 'file');
+      $('section-url').style.display = tab === 'url' ? 'block' : 'none';
+      $('section-file').style.display = tab === 'file' ? 'block' : 'none';
+    }
+
+    async function pasteClipboard() {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text) $('source-url').value = text;
+      } catch (e) {
+        alert("Clipboard read permission was denied.");
+      }
+    }
+
+    function toggleKeyVisibility() {
+      const el = $('ai-key');
+      el.type = el.type === 'password' ? 'text' : 'password';
+    }
+
+    function onProviderChange() {
+      const p = $('ai-provider').value;
+      if (p && configData.default_models && configData.default_models[p]) {
+        $('ai-model').placeholder = configData.default_models[p].split(',')[0];
+      }
+    }
+
+    async function saveToEnv() {
+      const payload = {
+        provider: $('ai-provider').value || configData.provider,
+        model: $('ai-model').value || configData.model,
+        key: $('ai-key').value,
+        whisper: $('whisper-size').value,
+      };
+      try {
+        const res = await fetch('/api/save_env', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const json = await res.json();
+        if (res.ok) {
+          alert("Settings successfully saved to .env!");
+          $('active-cfg-badge').textContent = `✓ Saved to .env: ${payload.provider}`;
+        } else {
+          alert("Failed to save: " + json.error);
+        }
+      } catch (e) {
+        alert("Network error saving to .env: " + e);
+      }
+    }
+
+    function updateStepUI(stage, pct) {
+      const steps = ['download', 'transcribe', 'ai', 'render'];
+      const stageIdx = steps.indexOf(stage);
+
+      steps.forEach((s, i) => {
+        const el = $('step-' + s);
+        if (!el) return;
+        el.classList.remove('active', 'done');
+        if (stageIdx > i) {
+          el.classList.add('done');
+        } else if (stageIdx === i) {
+          el.classList.add('active');
+        }
+      });
+
+      if (stage === 'completed') {
+        steps.forEach(s => $('step-' + s)?.classList.add('done'));
+      }
+
+      $('progress-bar').style.width = pct + '%';
+      $('progress-pct').textContent = Math.round(pct) + '%';
+    }
+
+    async function startClipping() {
+      const errBox = $('error-banner');
+      errBox.style.display = 'none';
+      errBox.textContent = '';
+
+      let source = '';
+      if (activeTab === 'url') {
+        source = $('source-url').value.trim();
+        if (!source) {
+          showError("Please enter a YouTube or video URL.");
+          return;
+        }
+      } else {
+        const file = $('source-file').files[0];
+        if (!file) {
+          showError("Please select a video file from your computer.");
+          return;
+        }
+        $('start-btn').disabled = true;
+        $('start-btn').innerHTML = '<span>⏳ Uploading file…</span>';
+        try {
+          const upRes = await fetch('/api/upload', {
+            method: 'POST',
+            headers: { 'X-Filename': encodeURIComponent(file.name) },
+            body: file,
+          });
+          const upJson = await upRes.json();
+          if (!upRes.ok) {
+            $('start-btn').disabled = false;
+            $('start-btn').innerHTML = '<span>⚡ Make Viral Clips</span>';
+            showError(upJson.error || "Upload failed.");
+            return;
+          }
+          source = upJson.path;
+        } catch (e) {
+          $('start-btn').disabled = false;
+          $('start-btn').innerHTML = '<span>⚡ Make Viral Clips</span>';
+          showError("Upload network error: " + e);
+          return;
+        }
+      }
+
+      const body = {
+        source: source,
+        n: parseInt($('clips-count').value) || 3,
+        min: parseInt($('min-sec').value) || 20,
+        max: parseInt($('max-sec').value) || 60,
+        framing: $('framing-mode').value,
+        captions: $('caption-style').value !== 'none',
+        caption_style: $('caption-style').value,
+        caption_color: $('caption-color').value,
+        provider: $('ai-provider').value,
+        model: $('ai-model').value,
+        key: $('ai-key').value,
+        whisper: $('whisper-size').value,
+      };
+
+      $('start-btn').disabled = true;
+      $('start-btn').innerHTML = '<span>Processing Video…</span>';
+      $('tracker-card').style.display = 'block';
+      $('clips-section').style.display = 'none';
+      $('clips-grid').innerHTML = '';
+      $('console-log').textContent = 'Submitting job to LocalClip engine…\n';
+      updateStepUI('download', 5);
+
+      try {
+        const startRes = await fetch('/api/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const startData = await startRes.json();
+        if (!startRes.ok) {
+          $('start-btn').disabled = false;
+          $('start-btn').innerHTML = '<span>⚡ Make Viral Clips</span>';
+          showError(startData.error || "Could not start clipping job.");
+          return;
+        }
+        listenToJob(startData.id);
+      } catch (e) {
+        $('start-btn').disabled = false;
+        $('start-btn').innerHTML = '<span>⚡ Make Viral Clips</span>';
+        showError("Failed to communicate with server: " + e);
+      }
+    }
+
+    function listenToJob(jid) {
+      if (currentEventSource) {
+        currentEventSource.close();
+      }
+
+      // Try SSE first for real-time events
+      try {
+        const es = new EventSource('/api/events/' + jid);
+        currentEventSource = es;
+
+        es.onmessage = e => {
+          try {
+            const data = JSON.parse(e.data);
+            handleJobUpdate(data, jid);
+          } catch (err) {
+            console.error("SSE parse error", err);
+          }
+        };
+
+        es.onerror = err => {
+          // Fall back to polling if SSE disconnected
+          es.close();
+          fallbackPolling(jid);
+        };
+      } catch (e) {
+        fallbackPolling(jid);
+      }
+    }
+
+    function fallbackPolling(jid) {
+      if (fallbackPollTimer) clearInterval(fallbackPollTimer);
+      fallbackPollTimer = setInterval(async () => {
+        try {
+          const res = await fetch('/api/job/' + jid);
+          const data = await res.json();
+          handleJobUpdate(data, jid);
+          if (data.status !== 'running') {
+            clearInterval(fallbackPollTimer);
+          }
+        } catch (e) {
+          console.error("Polling error", e);
+        }
+      }, 1500);
+    }
+
+    function handleJobUpdate(data, jid) {
+      if (data.log && Array.isArray(data.log)) {
+        $('console-log').textContent = data.log.join('\n');
+        $('console-log').scrollTop = 1e9;
+      } else if (data.line) {
+        $('console-log').textContent += '\n' + data.line;
+        $('console-log').scrollTop = 1e9;
+      }
+
+      if (data.stage && data.progress !== undefined) {
+        updateStepUI(data.stage, data.progress);
+      }
+
+      if (data.message) {
+        $('progress-msg').textContent = data.message;
+      }
+
+      if (data.type === 'done' || data.status === 'done') {
+        if (currentEventSource) currentEventSource.close();
+        if (fallbackPollTimer) clearInterval(fallbackPollTimer);
+        $('start-btn').disabled = false;
+        $('start-btn').innerHTML = '<span>⚡ Make Viral Clips</span>';
+        updateStepUI('completed', 100);
+        $('progress-msg').textContent = "Processing complete! All clips ready.";
+        renderClips(data.clips || [], jid);
+      } else if (data.type === 'error' || data.status === 'error') {
+        if (currentEventSource) currentEventSource.close();
+        if (fallbackPollTimer) clearInterval(fallbackPollTimer);
+        $('start-btn').disabled = false;
+        $('start-btn').innerHTML = '<span>⚡ Make Viral Clips</span>';
+        showError(data.message || "An error occurred during clip creation. Check console log above.");
+      }
+    }
+
+    function renderClips(clips, jid) {
+      if (!clips || clips.length === 0) {
+        showError("No clips were generated for this video.");
+        return;
+      }
+
+      $('clips-section').style.display = 'block';
+      $('clips-count-badge').textContent = clips.length + (clips.length === 1 ? ' clip' : ' clips');
+
+      const grid = $('clips-grid');
+      grid.innerHTML = clips.map((c, idx) => {
+        const fileUrl = `/files/${jid}/${c.file}`;
+        const score = c.score ? `${c.score}/10 🔥` : 'Top Clip 🔥';
+        const duration = Math.round(c.end - c.start);
+        const title = escHtml(c.title || `Clip ${idx + 1}`);
+        const hook = escHtml(c.hook || '');
+
+        return `
+          <div class="clip-card">
+            <div class="video-wrapper">
+              <video controls preload="metadata" src="${fileUrl}"></video>
+              <div class="score-badge">${score}</div>
+            </div>
+            <div class="clip-title">${title}</div>
+            ${hook ? `<div class="clip-hook">★ ${hook}</div>` : ''}
+            <div class="clip-time">${Math.round(c.start)}s – ${Math.round(c.end)}s (${duration}s)</div>
+            <a class="btn-download" href="${fileUrl}" download="${c.file}">
+              <span>⬇️ Download MP4</span>
+            </a>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function showError(msg) {
+      const errBox = $('error-banner');
+      errBox.style.display = 'block';
+      errBox.textContent = msg;
+    }
+
+    function copyLogs(e) {
+      e.stopPropagation();
+      const txt = $('console-log').textContent;
+      navigator.clipboard.writeText(txt).then(() => alert("Console logs copied to clipboard!"));
+    }
+
+    function escHtml(s) {
+      return String(s).replace(/[&<>"']/g, m => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[m]));
+    }
+  </script>
+</body>
+</html>
